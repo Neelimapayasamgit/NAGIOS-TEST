@@ -1,0 +1,139 @@
+devops@ip-172-31-81-12:~$ cat script.yml
+---
+- hosts: all
+  vars:
+    nagios_version: '4.4.5'
+    nagios_plugin_version: '2.2.1'
+    nagios_code_location: /tmp/nagioscore.tar.gz
+    nagios_plugin_location: /tmp/nagios-plugins.tar.gz
+  become: yes
+  tasks:
+    - name: Run the equivalent of "apt-get update" as a separate step
+      apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+    - name: install packages for OS
+      package:
+        name: "{{ item }}"
+        state: present
+      loop: "{{ packages_install }}"
+      tags:
+        - nagios
+    - name: Download the source to temp folder
+      get_url:
+        dest: "{{ nagios_code_location }}"
+        url: "https://github.com/NagiosEnterprises/nagioscore/archive/nagios-{{ nagios_version }}.tar.gz"
+      tags:
+        - nagios
+    - name: untar the code
+      unarchive:
+        src: "{{ nagios_code_location }}"
+        dest: "/tmp/"
+      tags:
+        - nagios
+    - name: Compile Code
+      shell:
+        cmd: sudo ./configure{{configure_var}}> configure.log && sudo make all > makeoutput.log
+      args:
+        chdir: "/tmp/nagioscore-nagios-{{ nagios_version }}/"
+      tags:
+        - nagios
+    - debug:
+        msg: Hello world! sudo ./configure{{configure_var}} # not required. The customized message that is printed. If omitted, prints a generic message.
+    - name: Create User and Group
+      shell:
+        cmd: sudo make install-groups-users > installgroups.log && sudo usermod -a -G nagios {{user_name}} > usermod.log
+      args:
+        chdir: "/tmp/nagioscore-nagios-{{ nagios_version }}/"
+      tags:
+        - nagios
+    - name: Install Binaries
+      shell:
+        cmd: sudo make install > makeinstall.log
+      args:
+        chdir: "/tmp/nagioscore-nagios-{{ nagios_version }}/"
+      tags:
+        - nagios
+    - name: Install Service / Daemon
+      shell:
+        cmd: sudo make install-daemoninit > daemoninit.log
+      args:
+        chdir: "/tmp/nagioscore-nagios-{{ nagios_version }}/"
+    - name: Install Command Mode
+      shell:
+        cmd: sudo make install-commandmode > commandmode.log
+      args:
+        chdir: "/tmp/nagioscore-nagios-{{ nagios_version }}/"
+      tags:
+        - nagios
+    - name: Install Configuration Files
+      shell:
+        cmd: sudo make install-config > config.log
+      args:
+        chdir: "/tmp/nagioscore-nagios-{{ nagios_version }}/"
+      tags:
+        - nagios
+    - name: Install Apache Config Files
+      shell:
+        cmd: sudo make install-webconf > webconf.log && sudo a2enmod rewrite > a2enmodrewrite.log && sudo a2enmod cgi > cgi.log
+      args:
+        chdir: "/tmp/nagioscore-nagios-{{ nagios_version }}/"
+      tags:
+        - nagios
+      when: ansible_os_family == "Debian"
+    - name: Install Apache Config Files for centos
+      shell:
+        cmd: sudo make install-webconf > webconf.log
+      args:
+        chdir: "/tmp/nagioscore-nagios-{{ nagios_version }}/"
+      tags:
+        - nagios
+      when: ansible_os_family != "Debian"
+    - name: Install latest passlib with pip
+      pip: name=passlib
+      tags:
+        - nagios
+    - name: Create nagiosadmin user account
+      htpasswd:
+        path: /usr/local/nagios/etc/htpasswd.users # required. Path to the file that contains the usernames and passwords
+        name: nagiosadmin # required. User name to add or remove
+        password: nagiosadmin # not required. Password associated with user.,Must be specified if user does not exist yet.
+      tags:
+        - nagios
+      notify: start services
+    - name: Download the plugin to temp folder
+      get_url:
+        dest: "{{ nagios_plugin_location }}"
+        url: "https://github.com/nagios-plugins/nagios-plugins/archive/release-{{ nagios_plugin_version }}.tar.gz"
+      tags:
+        - plugin
+    - name: untar the plugin code
+      unarchive:
+        src: "{{ nagios_plugin_location }}"
+        dest: "/tmp/"
+      tags:
+        - plugin
+    - name: Compile + Install
+      shell:
+        cmd: sudo ./tools/setup > setup.log && sudo ./configure > configue.log && sudo make > make.log && sudo make install
+      args:
+        chdir: "/tmp/nagios-plugins-release-{{ nagios_plugin_version }}/"
+      tags:
+        - plugin
+      notify: restart services
+  handlers:
+    - name: start services
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop:
+        "{{ service_list }}"
+    - name: restart services
+      service:
+        name: "{{ item }}"
+        state: restarted
+        enabled: true
+      loop:
+        "{{ service_list }}"
+devops@ip-172-31-81-12:~$
