@@ -1,4 +1,3 @@
-devops@ip-172-31-81-12:~$ cat script.yml
 ---
 - hosts: all
   vars:
@@ -136,4 +135,3 @@ devops@ip-172-31-81-12:~$ cat script.yml
         enabled: true
       loop:
         "{{ service_list }}"
-devops@ip-172-31-81-12:~$
